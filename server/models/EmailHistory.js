@@ -1,0 +1,74 @@
+const mongoose = require("mongoose");
+
+const emailHistorySchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    gmailAccountId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GmailAccount",
+      required: true,
+    },
+
+    from: {
+      type: String,
+      required: true,
+      lowercase: true,
+    },
+
+    to: {
+      type: String,
+      required: true,
+      lowercase: true,
+    },
+
+    subject: {
+      type: String,
+      required: true,
+    },
+
+    message: {
+      type: String,
+      required: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["sent", "failed"],
+      required: true,
+    },
+
+    messageId: {
+      type: String,
+      default: null,
+    },
+
+    attachment: {
+      filename: { type: String, default: null },
+      size: { type: Number, default: 0 },
+    },
+
+    error: {
+      type: String,
+      default: null,
+    },
+
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { timestamps: true }
+);
+
+const EmailHistory = mongoose.model(
+  "EmailHistory",
+  emailHistorySchema
+);
+
+module.exports = EmailHistory;
