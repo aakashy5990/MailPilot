@@ -566,9 +566,8 @@ function ComposeEmail() {
                   <button
                     type="button"
                     onClick={() => {
-                      window.location.href =
-                        "http://localhost:5000/api/gmail/connect";
-                    }}
+  window.location.href = `${API.defaults.baseURL}/gmail/connect`;
+}}
                     className="ml-2 font-bold underline"
                   >
                     Connect Gmail
