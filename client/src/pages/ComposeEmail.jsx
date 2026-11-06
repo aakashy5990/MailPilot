@@ -389,15 +389,13 @@ function ComposeEmail() {
       setBulkResults(response.data);
 
       setSuccess(
-        `Bulk email completed! ${response.data.sent} sent, ${response.data.failed} failed.`
+        `Bulk email completed! ${response.data.sent} sent, ${response.data.failed} failed.`,
       );
 
       setRecipientPreview(false);
       setShowBulkConfirm(false);
     } catch (err) {
-      setError(
-        err.response?.data?.message || "Unable to send bulk emails."
-      );
+      setError(err.response?.data?.message || "Unable to send bulk emails.");
     } finally {
       setSending(false);
     }
@@ -566,8 +564,8 @@ function ComposeEmail() {
                   <button
                     type="button"
                     onClick={() => {
-  window.location.href = `${API.defaults.baseURL}/gmail/connect`;
-}}
+                      window.location.href = `${api.defaults.baseURL}/gmail/connect`;
+                    }}
                     className="ml-2 font-bold underline"
                   >
                     Connect Gmail
@@ -1124,7 +1122,8 @@ function ComposeEmail() {
             <p className="mt-2 text-lg font-semibold text-blue-600">
               {recipientMode === "csv"
                 ? personalizedRecipients.length
-                : parseBulkRecipients().validEmails.length} recipients
+                : parseBulkRecipients().validEmails.length}{" "}
+              recipients
             </p>
 
             <p className="mt-3 text-sm text-gray-500">
