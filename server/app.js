@@ -6,6 +6,7 @@ const authRoutes = require("./routes/authRoutes");
 const cookieParser = require("cookie-parser");
 const gmailRoutes = require("./routes/gmailRoutes");
 const templateRoutes = require("./routes/templateRoutes");
+const compositionRoutes = require("./routes/compositionRoutes");
 
 const app = express();
 app.use(cookieParser());
@@ -38,6 +39,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/gmail", gmailRoutes);
 app.use("/api/templates", templateRoutes);
+app.use("/api/composition", compositionRoutes);
 
 // Handle unknown API routes
 app.use((req, res) => {

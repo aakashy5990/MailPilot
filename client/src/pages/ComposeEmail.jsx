@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   Mail,
   Users,
@@ -41,6 +41,16 @@ function ComposeEmail() {
   const [recipientMode, setRecipientMode] = useState("manual");
   const [csvFile, setCsvFile] = useState(null);
   const [personalizedRecipients, setPersonalizedRecipients] = useState([]);
+
+  const [compositionLoaded, setCompositionLoaded] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("idle");
+
+  const [savedComposition, setSavedComposition] = useState(null);
+  const [showResumePrompt, setShowResumePrompt] = useState(false);
+
+  const saveTimerRef = useRef(null);
+  const saveRequestRef = useRef(Promise.resolve());
+  const saveSequenceRef = useRef(0);
 
   const [csvStats, setCsvStats] = useState({
     total: 0,
@@ -232,6 +242,119 @@ function ComposeEmail() {
     fetchAccounts();
   }, []);
 
+  // Fetch Gmail accounts and restore saved composition
+  useEffect(() => {
+    const fetchAccounts = async () => {
+      try {
+        // 1. Fetch connected Gmail accounts
+        const accountResponse = await api.get("/gmail/accounts");
+        const connectedAccounts = accountResponse.data.accounts || [];
+
+        setAccounts(connectedAccounts);
+
+        // Set first Gmail account as default
+        if (connectedAccounts.length > 0) {
+          setAccountId(connectedAccounts[0]._id);
+        }
+
+        // 2. Fetch saved composition
+        try {
+          const compositionResponse = await api.get("/composition");
+          const saved = compositionResponse.data.composition;
+
+          if (saved) {
+            setSavedComposition(saved);
+            setShowResumePrompt(true);
+          }
+        } catch (compositionError) {
+          console.error(
+            "Unable to restore composition:",
+            compositionError.message,
+          );
+        } finally {
+          setCompositionLoaded(true);
+        }
+      } catch (error) {
+        setError("Unable to load connected Gmail accounts.");
+      } finally {
+        setLoadingAccounts(false);
+      }
+    };
+
+    fetchAccounts();
+  }, []);
+
+  // Automatically save composition after 2 seconds of inactivity
+  useEffect(() => {
+    if (!compositionLoaded) return;
+
+    const hasContent =
+      recipient.trim() ||
+      bulkRecipients.trim() ||
+      subject.trim() ||
+      message.trim() ||
+      personalizedRecipients.length > 0;
+
+    if (!hasContent) return;
+
+    saveTimerRef.current = setTimeout(async () => {
+      const currentSequence = ++saveSequenceRef.current;
+
+      const compositionData = {
+        emailMode,
+        accountId,
+        recipient,
+        bulkRecipients,
+        recipientMode,
+        personalizedRecipients,
+        subject,
+        message,
+      };
+
+      setSaveStatus("saving");
+
+      saveRequestRef.current = saveRequestRef.current
+        .catch(() => {})
+        .then(() => {
+          // Skip this request if newer data is already available
+          if (currentSequence !== saveSequenceRef.current) {
+            return null;
+          }
+
+          return api.put("/composition", compositionData);
+        });
+
+      try {
+        const result = await saveRequestRef.current;
+
+        // Only the latest request can update the status
+        if (currentSequence === saveSequenceRef.current && result) {
+          setSaveStatus("saved");
+        }
+      } catch (error) {
+        console.error("Autosave failed:", error.message);
+
+        if (currentSequence === saveSequenceRef.current) {
+          setSaveStatus("error");
+        }
+      }
+    }, 2000);
+
+    return () => {
+      clearTimeout(saveTimerRef.current);
+    };
+  }, [
+    compositionLoaded,
+    emailMode,
+    accountId,
+    recipient,
+    bulkRecipients,
+    recipientMode,
+    personalizedRecipients,
+    subject,
+    message,
+  ]);
+
   // Fetch saved email templates
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -270,6 +393,93 @@ function ComposeEmail() {
     setAttachment(file);
   };
 
+  // Clear saved composition after successful email sending
+  const clearSavedComposition = async () => {
+
+    // Invalidate all older queued autosave requests
+    saveSequenceRef.current += 1;
+
+    // Cancel pending autosave timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+
+    try {
+      // Wait for any ongoing autosave request
+      await saveRequestRef.current.catch(() => {});
+
+      // Delete composition from MongoDB
+      await api.delete("/composition");
+
+      setSaveStatus("idle");
+      console.log("Saved composition cleared.");
+      return true;
+    } catch (error) {
+      console.error("Unable to clear composition:", error.message);
+
+      setSaveStatus("error");
+
+      return false;
+    }
+  };
+
+  // Resume the previous composition
+  const handleResumeComposition = () => {
+    if (!savedComposition) return;
+
+    setEmailMode(savedComposition.emailMode || "single");
+
+    const savedAccountExists = accounts.some(
+      (account) => account._id === savedComposition.accountId,
+    );
+
+    if (savedAccountExists) {
+      setAccountId(savedComposition.accountId);
+    }
+
+    setRecipient(savedComposition.recipient || "");
+    setBulkRecipients(savedComposition.bulkRecipients || "");
+    setRecipientMode(savedComposition.recipientMode || "manual");
+
+    setPersonalizedRecipients(savedComposition.personalizedRecipients || []);
+
+    setSubject(savedComposition.subject || "");
+    setMessage(savedComposition.message || "");
+
+    setStep("form");
+    setShowResumePrompt(false);
+  };
+
+  // Discard the previous composition
+
+  const handleDiscardComposition = async () => {
+    // Try deleting the saved composition
+    const isDeleted = await clearSavedComposition();
+
+    // If deletion fails, stop here
+    if (!isDeleted) {
+      setError("Unable to discard your previous email. Please try again.");
+      return;
+    }
+
+    // Deletion successful: clear local form data
+    setSavedComposition(null);
+    setShowResumePrompt(false);
+
+    setEmailMode("single");
+    setRecipient("");
+    setBulkRecipients("");
+    setRecipientMode("manual");
+    setPersonalizedRecipients([]);
+    setSubject("");
+    setMessage("");
+    setAttachment(null);
+
+    setStep("selection");
+    setError("");
+  };
+
   // Send email
   const handleSendEmail = async (event) => {
     event.preventDefault();
@@ -296,6 +506,8 @@ function ComposeEmail() {
       }
 
       const response = await api.post("/gmail/send", formData);
+
+      await clearSavedComposition();
 
       setSuccess(response.data.message || "Email sent successfully!");
 
@@ -386,6 +598,20 @@ function ComposeEmail() {
 
       const response = await api.post("/gmail/bulk-send", formData);
 
+      // Clear draft only when every recipient was successfully sent
+      if (response.data.sent > 0 && response.data.failed === 0) {
+        await clearSavedComposition();
+
+        setBulkRecipients("");
+        setPersonalizedRecipients([]);
+        setSubject("");
+        setMessage("");
+        setRecipient("");
+        setAttachment(null);
+        setCsvFile(null);
+        setRecipientPreview(false);
+      }
+
       setBulkResults(response.data);
 
       setSuccess(
@@ -415,7 +641,7 @@ function ComposeEmail() {
               window.history.back();
             }
           }}
-          className="mb-8 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600"
+          className="mb-8 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-blue-600 cursor-pointer"
         >
           <ArrowLeft size={17} />
           Back
@@ -435,6 +661,27 @@ function ComposeEmail() {
               ? "Choose how you want to send your emails."
               : "Write your email and send it from your Gmail account."}
           </p>
+
+          {step === "form" && (
+            <div className="mt-3 flex items-center gap-2 text-sm">
+              {saveStatus === "saving" && (
+                <>
+                  <Loader2 size={15} className="animate-spin text-blue-600" />
+                  <span className="text-slate-500">Saving draft...</span>
+                </>
+              )}
+
+              {saveStatus === "saved" && (
+                <span className="text-green-600">✓ All changes saved</span>
+              )}
+
+              {saveStatus === "error" && (
+                <span className="text-red-600">
+                  ⚠ Unable to save draft. Please check your connection.
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Email Mode Selection */}
@@ -515,7 +762,7 @@ function ComposeEmail() {
             <div className="mt-8 flex justify-end">
               <button
                 onClick={() => setStep("form")}
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700"
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white shadow-lg shadow-blue-600/20 transition hover:bg-blue-700 cursor-pointer"
               >
                 Continue
                 <ArrowRight size={18} />
@@ -1103,6 +1350,67 @@ function ComposeEmail() {
                 </span>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Previous Composition Resume Popup */}
+      {showResumePrompt && savedComposition && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+              <FileText size={25} />
+            </div>
+
+            <h2 className="text-xl font-bold text-slate-900">
+              Previous email found
+            </h2>
+
+            <p className="mt-2 text-sm text-slate-500">
+              You have an unfinished email from your previous session. Would you
+              like to continue writing it?
+            </p>
+
+            <div className="mt-5 rounded-xl bg-slate-50 p-4">
+              <p className="text-xs font-semibold uppercase text-slate-400">
+                Subject
+              </p>
+
+              <p className="mt-1 font-medium text-slate-800">
+                {savedComposition.subject || "No subject"}
+              </p>
+
+              <p className="mt-3 text-xs font-semibold uppercase text-slate-400">
+                Message preview
+              </p>
+
+              <p className="mt-1 text-sm text-slate-600 line-clamp-3">
+                {savedComposition.message || "No message written"}
+              </p>
+            </div>
+
+            {error && (
+              <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                {error}
+              </p>
+            )}
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={handleDiscardComposition}
+                className="flex-1 rounded-xl border border-slate-300 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Discard
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResumeComposition}
+                className="flex-1 rounded-xl bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700 cursor-pointer"
+              >
+                Resume
+              </button>
+            </div>
           </div>
         </div>
       )}

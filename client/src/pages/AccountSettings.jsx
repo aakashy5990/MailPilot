@@ -352,7 +352,7 @@ const AccountSettings = () => {
                 onClick={() => {
                   window.location.href = `${API.defaults.baseURL}/gmail/connect`;
                 }}
-                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
                 Connect Gmail
