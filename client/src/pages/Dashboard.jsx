@@ -64,7 +64,7 @@ function Dashboard() {
 
           <nav className="space-y-2">
             <a
-              href="#"
+              href="dashboard"
               className="flex items-center gap-3 rounded-xl bg-blue-600 px-4 py-3 text-sm font-medium text-white"
             >
               <LayoutDashboard size={18} />

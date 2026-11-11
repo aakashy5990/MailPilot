@@ -48,9 +48,24 @@ const emailHistorySchema = new mongoose.Schema(
       default: null,
     },
 
-    attachment: {
-      filename: { type: String, default: null },
-      size: { type: Number, default: 0 },
+    attachments: {
+      type: [
+        {
+          filename: {
+            type: String,
+            required: true,
+          },
+          size: {
+            type: Number,
+            required: true,
+          },
+          mimetype: {
+            type: String,
+            default: "application/octet-stream",
+          },
+        },
+      ],
+      default: [],
     },
 
     error: {
@@ -63,12 +78,9 @@ const emailHistorySchema = new mongoose.Schema(
       default: Date.now,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
-const EmailHistory = mongoose.model(
-  "EmailHistory",
-  emailHistorySchema
-);
+const EmailHistory = mongoose.model("EmailHistory", emailHistorySchema);
 
 module.exports = EmailHistory;

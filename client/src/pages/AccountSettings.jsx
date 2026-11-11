@@ -34,7 +34,7 @@ const settingsItems = [
   },
   {
     title: "Preferences",
-    description: "Manage your application preferences",
+    description: "Manage your application preferences 'coming soon'",
     icon: Bell,
   },
 ];

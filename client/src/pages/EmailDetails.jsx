@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Mail } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, FileText } from "lucide-react";
 import api from "../services/api";
 
 function EmailDetails() {
@@ -92,17 +92,32 @@ function EmailDetails() {
               </div>
             </div>
 
-            {email.attachment?.filename && (
+            {email.attachments?.length > 0 && (
               <div className="mt-6 border-t border-slate-200 pt-6">
-                <h3 className="mb-2 font-semibold text-slate-900">
-                  Attachment
+                <h3 className="mb-3 font-semibold text-slate-900">
+                  Attachments ({email.attachments.length})
                 </h3>
-                <p className="text-sm text-slate-600">
-                  {email.attachment.filename}
-                </p>
-                <p className="text-xs text-slate-400">
-                  {(email.attachment.size / 1024).toFixed(2)} KB
-                </p>
+
+                <div className="space-y-3">
+                  {email.attachments.map((file, index) => (
+                    <div
+                      key={`${file.filename}-${index}`}
+                      className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <FileText className="shrink-0 text-blue-600" size={20} />
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-800">
+                          {file.filename}
+                        </p>
+
+                        <p className="text-xs text-slate-500">
+                          {file.mimetype} · {(file.size / 1024).toFixed(2)} KB
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

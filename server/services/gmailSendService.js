@@ -1,3 +1,4 @@
+
 const crypto = require("crypto");
 const fs = require("fs/promises");
 const path = require("path");
@@ -11,8 +12,7 @@ const sendGmailMessage = async ({
   to,
   subject,
   message,
-  filePath,
-  fileName,
+  attachments = [],
 }) => {
   // 1. Decrypt Gmail refresh token
   const refreshToken = decryptToken({
@@ -21,23 +21,23 @@ const sendGmailMessage = async ({
     authTag: account.authTag,
   });
 
-  // 2. Create Google OAuth client
+  // 2. Create OAuth client
   const oauth2Client = createOAuthClient();
 
   oauth2Client.setCredentials({
     refresh_token: refreshToken,
   });
 
-  // 3. Create Gmail API client
+  // 3. Gmail API client
   const gmail = google.gmail({
     version: "v1",
     auth: oauth2Client,
   });
 
-  // 4. Create unique MIME boundary
+  // 4. MIME boundary
   const boundary = `mailpilot_${crypto.randomUUID()}`;
 
-  // 5. Create email headers and message
+  // 5. Email headers
   const emailParts = [
     `From: ${account.email}`,
     `To: ${to}`,
@@ -52,14 +52,25 @@ const sendGmailMessage = async ({
     Buffer.from(message, "utf8").toString("base64"),
   ];
 
-  // 6. Add PDF attachment if available
-  if (filePath) {
-    const fileData = await fs.readFile(filePath);
+  // 6. Add attachments
+  for (const attachment of attachments) {
+    const fileData = await fs.readFile(attachment.path);
+
+    // Original filename
+    const originalFilename =
+      attachment.filename || attachment.originalname || "attachment";
 
     const safeFilename = path
-      .basename(fileName || "attachment.pdf")
+      .basename(originalFilename.replace(/\\/g, "/"))
       .replace(/[\r\n"]/g, "_");
 
+    // MIME type
+    const mimeType =
+      attachment.contentType ||
+      attachment.mimetype ||
+      "application/octet-stream";
+
+    // Base64 encoding
     const attachmentBase64 = fileData
       .toString("base64")
       .match(/.{1,76}/g)
@@ -67,7 +78,7 @@ const sendGmailMessage = async ({
 
     emailParts.push(
       `--${boundary}`,
-      `Content-Type: application/pdf; name="${safeFilename}"`,
+      `Content-Type: ${mimeType}; name="${safeFilename}"`,
       `Content-Disposition: attachment; filename="${safeFilename}"`,
       "Content-Transfer-Encoding: base64",
       "",
@@ -78,8 +89,9 @@ const sendGmailMessage = async ({
   // 7. Close MIME message
   emailParts.push(`--${boundary}--`);
 
-  // 8. Convert to Gmail API format
+  // 8. Gmail API format
   const emailContent = emailParts.join("\r\n");
+
   const rawMessage = Buffer.from(emailContent).toString("base64url");
 
   // 9. Send email

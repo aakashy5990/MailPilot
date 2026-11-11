@@ -23,6 +23,7 @@ function ComposeEmail() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [attachment, setAttachment] = useState(null);
+  const [attachments, setAttachments] = useState([]);
 
   const [loadingAccounts, setLoadingAccounts] = useState(true);
   const [sending, setSending] = useState(false);
@@ -393,9 +394,85 @@ function ComposeEmail() {
     setAttachment(file);
   };
 
+  const handleAttachments = (event) => {
+    const files = Array.from(event.target.files);
+
+    if (files.length === 0) return;
+
+    const allowedExtensions = [
+      "pdf",
+      "doc",
+      "docx",
+      "txt",
+      "jpg",
+      "jpeg",
+      "png",
+      "gif",
+      "webp",
+      "xls",
+      "xlsx",
+      "csv",
+      "ppt",
+      "pptx",
+    ];
+
+    const allowedMimeTypes = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/plain",
+      "image/jpeg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "text/csv",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ];
+
+    if (attachments.length + files.length > 5) {
+      setError("Maximum 5 attachments allowed.");
+      event.target.value = "";
+      return;
+    }
+
+    const invalidFile = files.find((file) => {
+      const extension = file.name.split(".").pop().toLowerCase();
+
+      return (
+        !allowedExtensions.includes(extension) ||
+        !allowedMimeTypes.includes(file.type) ||
+        file.size > 5 * 1024 * 1024
+      );
+    });
+
+    if (invalidFile) {
+      setError("Unsupported file format or file exceeds 5 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    const totalSize = [...attachments, ...files].reduce(
+      (total, file) => total + file.size,
+      0,
+    );
+
+    if (totalSize > 15 * 1024 * 1024) {
+      setError("Total attachment size cannot exceed 15 MB.");
+      event.target.value = "";
+      return;
+    }
+
+    setError("");
+    setAttachments((prev) => [...prev, ...files]);
+
+    event.target.value = "";
+  };
+
   // Clear saved composition after successful email sending
   const clearSavedComposition = async () => {
-
     // Invalidate all older queued autosave requests
     saveSequenceRef.current += 1;
 
@@ -501,9 +578,9 @@ function ComposeEmail() {
       formData.append("subject", subject);
       formData.append("message", message);
 
-      if (attachment) {
-        formData.append("attachment", attachment);
-      }
+      attachments.forEach((file) => {
+        formData.append("attachments", file);
+      });
 
       const response = await api.post("/gmail/send", formData);
 
@@ -514,6 +591,7 @@ function ComposeEmail() {
       setRecipient("");
       setSubject("");
       setMessage("");
+      setAttachments([]);
       setAttachment(null);
 
       const fileInput = document.getElementById("email-attachment");
@@ -592,9 +670,9 @@ function ComposeEmail() {
       formData.append("subject", subject);
       formData.append("message", message);
 
-      if (attachment) {
-        formData.append("attachment", attachment);
-      }
+      attachments.forEach((file) => {
+        formData.append("attachments", file);
+      });
 
       const response = await api.post("/gmail/bulk-send", formData);
 
@@ -607,9 +685,13 @@ function ComposeEmail() {
         setSubject("");
         setMessage("");
         setRecipient("");
+        setAttachments([]);
         setAttachment(null);
         setCsvFile(null);
         setRecipientPreview(false);
+
+        const fileInput = document.getElementById("email-attachment");
+        if (fileInput) fileInput.value = "";
       }
 
       setBulkResults(response.data);
@@ -908,48 +990,78 @@ function ComposeEmail() {
             </div>
 
             {/* Attachment */}
-            <div className="mb-6">
-              <label className="mb-2 block text-sm font-semibold text-slate-700">
-                Attachment (PDF only, maximum 5 MB)
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">
+                Attachments
+                <span className="ml-1 text-xs font-normal text-slate-500">
+                  (PDF, Images, Documents, Excel & PowerPoint · Max 5 files · 5 MB each · 15 MB total)
+                </span>
               </label>
 
               <label
                 htmlFor="email-attachment"
-                className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 p-4 transition hover:border-blue-500 hover:bg-blue-50"
+                className="flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-blue-200 bg-white px-4 py-4 transition hover:border-blue-500 hover:bg-blue-50"
               >
-                <Paperclip className="text-blue-600" size={21} />
-                <span className="text-sm text-slate-600">
-                  Choose a PDF file
-                </span>
-                <input
-                  id="email-attachment"
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={handleAttachment}
-                  className="hidden"
-                />
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <Paperclip size={20} />
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-slate-700">
+                    Click to upload files
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    Select multiple files or drag them here
+                  </p>
+                </div>
               </label>
 
-              {attachment && (
-                <div className="mt-3 flex items-center justify-between rounded-lg bg-slate-100 p-3">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <FileText size={19} className="shrink-0 text-red-500" />
-                    <span className="truncate text-sm text-slate-700">
-                      {attachment.name}
-                    </span>
-                  </div>
+              <input
+                id="email-attachment"
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png,.gif,.webp,.xls,.xlsx,.csv,.ppt,.pptx"
+                multiple
+                onChange={handleAttachments}
+                className="hidden"
+              />
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachment(null);
-                      document.getElementById("email-attachment").value = "";
-                    }}
-                    className="text-slate-500 hover:text-red-600"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
+              {attachments.length > 0 && (
+                <>
+                  <p className="mt-2 text-sm font-medium text-green-600">
+                    ✓ {attachments.length} PDF file(s) selected successfully
+                  </p>
+
+                  <div className="mt-3 space-y-2">
+                    {attachments.map((file, index) => (
+                      <div
+                        key={`${file.name}-${file.lastModified}`}
+                        className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 p-3"
+                      >
+                        <div className="flex items-center gap-2 overflow-hidden">
+                          <FileText
+                            size={19}
+                            className="shrink-0 text-red-500"
+                          />
+                          <span className="truncate text-sm text-slate-700">
+                            {file.name}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAttachments((prev) =>
+                              prev.filter((_, i) => i !== index),
+                            )
+                          }
+                          className="ml-3 text-slate-500 hover:text-red-600"
+                        >
+                          <X size={18} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
@@ -967,11 +1079,11 @@ function ComposeEmail() {
             )}
 
             {/* Send Button */}
-            <div className="flex justify-end">
+            <div className="mt-8 flex justify-end">
               <button
                 type="submit"
                 disabled={sending || loadingAccounts || accounts.length === 0}
-                className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
               >
                 {sending ? (
                   <>

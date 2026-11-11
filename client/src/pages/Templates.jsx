@@ -11,6 +11,8 @@ import {
   X,
 } from "lucide-react";
 import api from "../services/api";
+import { useNavigate} from "react-router-dom"
+
 
 function Templates() {
   const [templates, setTemplates] = useState([]);
@@ -30,6 +32,9 @@ function Templates() {
   const [deleteTemplateId, setDeleteTemplateId] = useState(null);
 
   const [deleting, setDeleting] = useState(false);
+
+  const navigate = useNavigate();
+
 
   // Fetch saved templates
   const fetchTemplates = async () => {
@@ -145,6 +150,13 @@ const handleCreate = async (event) => {
   return (
     <div className="min-h-screen bg-slate-50 px-5 py-10 sm:px-8">
       <div className="mx-auto max-w-6xl">
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="mb-6 flex items-center gap-2 text-sm text-slate-600 hover:text-blue-600 cursor-pointer"
+        >
+          <ArrowLeft size={18} />
+          Back to Dashboard
+        </button>
 
         {/* Header */}
         <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
@@ -168,7 +180,7 @@ const handleCreate = async (event) => {
               setError("");
               setSuccess("");
             }}
-            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700"
+            className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 font-semibold text-white transition hover:bg-blue-700 cursor-pointer"
           >
             {showForm ? <X size={18} /> : <Plus size={18} />}
             {showForm ? "Close Form" : "Create Template"}
@@ -244,7 +256,7 @@ const handleCreate = async (event) => {
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 font-semibold text-white hover:bg-blue-700 disabled:opacity-50 cursor-pointer"
             >
               {saving ? (
                 <>

@@ -6,6 +6,7 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
+  ArrowLeft
 } from "lucide-react";
 import api from "../services/api";
 import { useNavigate } from "react-router-dom";
@@ -62,6 +63,13 @@ function EmailHistory() {
   return (
     <div className="min-h-screen bg-slate-50 px-5 py-10 sm:px-8">
       <div className="mx-auto max-w-6xl">
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="mb-6 flex items-center gap-2 text-sm text-slate-600 hover:text-blue-600 cursor-pointer"
+        >
+          <ArrowLeft size={18} />
+          Back to Dashboard
+        </button>
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wider text-blue-600">
             MailPilot Workspace
@@ -189,7 +197,7 @@ function EmailHistory() {
                 <button
                   onClick={handlePreviousPage}
                   disabled={currentPage === 1}
-                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 cursor-pointer"
                 >
                   Previous
                 </button>

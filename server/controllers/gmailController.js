@@ -16,7 +16,6 @@ const path = require("path");
 
 const EmailHistory = require("../models/EmailHistory");
 
-
 const cookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
@@ -161,9 +160,7 @@ const handleGmailCallback = async (req, res) => {
 
     console.log("Gmail account connected successfully:", email);
 
-    return res.redirect(
-      `${process.env.CLIENT_URL}/dashboard?gmail=connected`
-    );
+    return res.redirect(`${process.env.CLIENT_URL}/dashboard?gmail=connected`);
   } catch (error) {
     console.error("Google callback error:", error.message);
 
@@ -213,7 +210,6 @@ const disconnectGmail = async (req, res) => {
       success: true,
       message: "Gmail account disconnected successfully.",
     });
-
   } catch (error) {
     console.error("Disconnect Gmail error:", error.message);
 
@@ -225,6 +221,8 @@ const disconnectGmail = async (req, res) => {
 };
 
 const sendEmail = async (req, res) => {
+  const files = req.files || [];
+
   try {
     const { accountId, to, subject, message } = req.body;
 
@@ -264,17 +262,23 @@ const sendEmail = async (req, res) => {
       });
     }
 
-    // 4. Send email using reusable service
+    // 4. Prepare multiple attachments
+    const attachments = files.map((file) => ({
+  filename: file.originalname,
+  path: file.path,
+  contentType: file.mimetype,
+}));
+
+    // 5. Send email
     const result = await sendGmailMessage({
       account,
       to,
       subject,
       message,
-      filePath: req.file?.path,
-      fileName: req.file?.originalname,
+      attachments,
     });
 
-    // 5. Save email history
+    // 6. Save email history
     try {
       await EmailHistory.create({
         userId: req.user._id,
@@ -285,10 +289,13 @@ const sendEmail = async (req, res) => {
         message,
         status: "sent",
         messageId: result.id,
-        attachment: {
-          filename: req.file?.originalname || null,
-          size: req.file?.size || 0,
-        },
+
+        attachments: files.map((file) => ({
+          filename: file.originalname,
+          size: file.size,
+          mimetype: file.mimetype,
+        })),
+
         sentAt: new Date(),
       });
     } catch (historyError) {
@@ -299,8 +306,8 @@ const sendEmail = async (req, res) => {
       success: true,
       message: "Email sent successfully!",
       messageId: result.id,
+      attachmentCount: files.length,
     });
-
   } catch (error) {
     console.error("Send email error:", error.message);
 
@@ -308,20 +315,22 @@ const sendEmail = async (req, res) => {
       success: false,
       message: "Unable to send email.",
     });
-
   } finally {
-    if (req.file?.path) {
-      await fs.unlink(req.file.path).catch((error) => {
-        console.error("Temporary file cleanup failed:", error.message);
-      });
-    }
+    // 7. Delete all temporary attachments
+    await Promise.all(
+      files.map((file) =>
+        fs.unlink(file.path).catch((error) => {
+          console.error("Temporary file cleanup failed:", error.message);
+        }),
+      ),
+    );
   }
 };
 
-
-
 // Send the same email separately to multiple recipients
 const sendBulkEmail = async (req, res) => {
+  const files = req.files || [];
+
   try {
     const { accountId, recipients, subject, message } = req.body;
 
@@ -345,9 +354,7 @@ const sendBulkEmail = async (req, res) => {
 
     try {
       emailList =
-        typeof recipients === "string"
-          ? JSON.parse(recipients)
-          : recipients;
+        typeof recipients === "string" ? JSON.parse(recipients) : recipients;
     } catch {
       return res.status(400).json({
         success: false,
@@ -377,8 +384,7 @@ const sendBulkEmail = async (req, res) => {
             typeof item.email === "string"
               ? item.email.trim().toLowerCase()
               : "",
-          name:
-            typeof item.name === "string" ? item.name.trim() : "",
+          name: typeof item.name === "string" ? item.name.trim() : "",
         };
       }
 
@@ -403,7 +409,7 @@ const sendBulkEmail = async (req, res) => {
       });
     }
 
-    // 5. Validate emails
+    // 5. Validate email addresses
     const invalidEmails = uniqueRecipients
       .filter((recipient) => !validator.isEmail(recipient.email))
       .map((recipient) => recipient.email);
@@ -416,7 +422,7 @@ const sendBulkEmail = async (req, res) => {
       });
     }
 
-    // 4. Find Gmail account belonging to logged-in user
+    // 6. Find user's connected Gmail account
     const account = await GmailAccount.findOne({
       _id: accountId,
       userId: req.user._id,
@@ -429,17 +435,29 @@ const sendBulkEmail = async (req, res) => {
       });
     }
 
-    // 5. Send emails one by one
+    // 7. Prepare attachments once
+    const attachments = files.map((file) => ({
+  filename: file.originalname,
+  path: file.path,
+  contentType: file.mimetype,
+}));
+
+    const attachmentHistory = files.map((file) => ({
+      filename: file.originalname,
+      size: file.size,
+      mimetype: file.mimetype,
+    }));
+
+    // 8. Send emails one by one
     const results = [];
 
     for (let i = 0; i < uniqueRecipients.length; i++) {
       const recipient = uniqueRecipients[i];
       const to = recipient.email;
 
-      // Replace {{name}} with the recipient's actual name
       const personalizedMessage = message.replace(
         /{{name}}/gi,
-        recipient.name || "there"
+        recipient.name || "there",
       );
 
       try {
@@ -448,8 +466,7 @@ const sendBulkEmail = async (req, res) => {
           to,
           subject,
           message: personalizedMessage,
-          filePath: req.file?.path,
-          fileName: req.file?.originalname,
+          attachments,
         });
 
         await EmailHistory.create({
@@ -461,10 +478,7 @@ const sendBulkEmail = async (req, res) => {
           message: personalizedMessage,
           status: "sent",
           messageId: result.id,
-          attachment: {
-            filename: req.file?.originalname || null,
-            size: req.file?.size || 0,
-          },
+          attachments: attachmentHistory,
           sentAt: new Date(),
         });
 
@@ -493,10 +507,7 @@ const sendBulkEmail = async (req, res) => {
             message: personalizedMessage,
             status: "failed",
             error: error.message,
-            attachment: {
-              filename: req.file?.originalname || null,
-              size: req.file?.size || 0,
-            },
+            attachments: attachmentHistory,
             sentAt: new Date(),
           });
         } catch (historyError) {
@@ -510,13 +521,11 @@ const sendBulkEmail = async (req, res) => {
       }
     }
 
-    // 6. Return batch results
-    const sentCount = results.filter(
-      (item) => item.status === "sent"
-    ).length;
+    // 9. Calculate results
+    const sentCount = results.filter((item) => item.status === "sent").length;
 
     const failedCount = results.filter(
-      (item) => item.status === "failed"
+      (item) => item.status === "failed",
     ).length;
 
     return res.status(200).json({
@@ -527,7 +536,6 @@ const sendBulkEmail = async (req, res) => {
       failed: failedCount,
       results,
     });
-
   } catch (error) {
     console.error("Bulk email error:", error.message);
 
@@ -535,17 +543,17 @@ const sendBulkEmail = async (req, res) => {
       success: false,
       message: "Unable to process bulk emails.",
     });
-
   } finally {
-    if (req.file?.path) {
-      await fs.unlink(req.file.path).catch((error) => {
-        console.error("Temporary file cleanup failed:", error.message);
-      });
-    }
+    // 10. Delete all temporary attachments
+    await Promise.all(
+      files.map((file) =>
+        fs.unlink(file.path).catch((error) => {
+          console.error("Temporary file cleanup failed:", error.message);
+        }),
+      ),
+    );
   }
 };
-
-
 
 // Get logged-in user's email history
 const getEmailHistory = async (req, res) => {
@@ -574,10 +582,7 @@ const getEmailHistory = async (req, res) => {
 
     // Fetch only the logged-in user's email history
     const [history, total, sentTotal] = await Promise.all([
-      EmailHistory.find(filter)
-        .sort({ sentAt: -1 })
-        .skip(skip)
-        .limit(limit),
+      EmailHistory.find(filter).sort({ sentAt: -1 }).skip(skip).limit(limit),
 
       EmailHistory.countDocuments(filter),
 
@@ -607,7 +612,6 @@ const getEmailHistory = async (req, res) => {
     });
   }
 };
-
 
 // Get details of a single email
 const getEmailDetails = async (req, res) => {

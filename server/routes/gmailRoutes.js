@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { upload, validatePdf } = require("../middleware/uploadMiddleware");
+const { upload, validateAttachments } = require("../middleware/uploadMiddleware");
 
 const protect = require("../middleware/authMiddleware");
 const {
@@ -23,17 +23,17 @@ router.delete("/:id", protect, disconnectGmail);
 router.post(
   "/send",
   protect,
-  upload.single("attachment"),
-  validatePdf,
-  sendEmail,
+  upload.array("attachments", 5),
+  validateAttachments,
+  sendEmail
 );
 // Send bulk emails
 router.post(
   "/bulk-send",
   protect,
-  upload.single("attachment"),
-  validatePdf,
-  sendBulkEmail,
+  upload.array("attachments", 5),
+  validateAttachments,
+  sendBulkEmail
 );
 // Get email history of logged-in user
 router.get("/history", protect, getEmailHistory);
