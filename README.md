@@ -285,9 +285,9 @@ Detailed technical documentation is available in the `docs/` directory:
 
 **Aakash Yadav**
 
-- GitHub: https://github.com/aakashy5990
-- LinkedIn: Add your LinkedIn profile URL
-- Portfolio: Add your portfolio URL
+- GitHub: [Github profile URL](https://github.com/aakashy5990/)
+- LinkedIn: [LinkedIn profile URL](https://www.linkedin.com/in/aakash-yadav-9bb5a5263/)
+- Portfolio: [ProfileUrl](https://aakashy5990.github.io/portfolio/)
 
 ---
 

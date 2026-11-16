@@ -10,6 +10,11 @@ const emailCompositionSchema = new mongoose.Schema(
       unique: true,
     },
 
+    version: {
+      type: Number,
+      default: 0,
+    },
+
     emailMode: {
       type: String,
       enum: ["single", "bulk"],

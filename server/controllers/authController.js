@@ -1,4 +1,3 @@
-
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const validator = require("validator");
@@ -12,7 +11,7 @@ const registerUser = async (req, res) => {
     if (!name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide name, email and password"
+        message: "Please provide name, email and password",
       });
     }
 
@@ -20,7 +19,7 @@ const registerUser = async (req, res) => {
     if (!validator.isEmail(email)) {
       return res.status(400).json({
         success: false,
-        message: "Please enter a valid email"
+        message: "Please enter a valid email",
       });
     }
 
@@ -28,19 +27,19 @@ const registerUser = async (req, res) => {
     if (password.length < 8) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters"
+        message: "Password must be at least 8 characters",
       });
     }
 
     // Check existing user
     const existingUser = await User.findOne({
-      email: email.toLowerCase().trim()
+      email: email.toLowerCase().trim(),
     });
 
     if (existingUser) {
       return res.status(409).json({
         success: false,
-        message: "User already exists"
+        message: "User already exists",
       });
     }
 
@@ -51,7 +50,7 @@ const registerUser = async (req, res) => {
     const user = await User.create({
       name,
       email: email.toLowerCase().trim(),
-      password: hashedPassword
+      password: hashedPassword,
     });
 
     // Send response
@@ -61,21 +60,18 @@ const registerUser = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
-
   } catch (error) {
     console.error("Registration error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
-
-
 
 const loginUser = async (req, res) => {
   try {
@@ -85,41 +81,36 @@ const loginUser = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Please provide email and password"
+        message: "Please provide email and password",
       });
     }
 
     // Find user by email
     const user = await User.findOne({
-      email: email.toLowerCase().trim()
+      email: email.toLowerCase().trim(),
     });
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
 
     // Compare entered password with hashed password
-    const isPasswordCorrect = await bcrypt.compare(
-      password,
-      user.password
-    );
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
 
     if (!isPasswordCorrect) {
       return res.status(401).json({
         success: false,
-        message: "Invalid email or password"
+        message: "Invalid email or password",
       });
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "1d" }
-    );
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: process.env.JWT_EXPIRES_IN || "1d",
+    });
 
     // // Send token through HTTP-only cookie
     // res.cookie("token", token, {
@@ -129,7 +120,6 @@ const loginUser = async (req, res) => {
     //   maxAge: 24 * 60 * 60 * 1000
     // });
 
-    
     // Send token through HTTP-only cookie
     res.cookie("token", token, {
       httpOnly: true,
@@ -144,20 +134,18 @@ const loginUser = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
-      }
+        email: user.email,
+      },
     });
-
   } catch (error) {
     console.error("Login error:", error.message);
 
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
-
 
 const getMe = async (req, res) => {
   try {
@@ -166,14 +154,13 @@ const getMe = async (req, res) => {
       user: {
         id: req.user._id,
         name: req.user.name,
-        email: req.user.email
-      }
+        email: req.user.email,
+      },
     });
-
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Internal server error"
+      message: "Internal server error",
     });
   }
 };
@@ -205,9 +192,9 @@ const updateProfile = async (req, res) => {
         name: name.trim(),
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
-      }
+      },
     ).select("-password");
 
     if (!updatedUser) {
@@ -226,7 +213,6 @@ const updateProfile = async (req, res) => {
         email: updatedUser.email,
       },
     });
-
   } catch (error) {
     console.error("Profile update error:", error.message);
 
@@ -237,15 +223,10 @@ const updateProfile = async (req, res) => {
   }
 };
 
-
 // Change password of logged-in user
 const changePassword = async (req, res) => {
   try {
-    const {
-      currentPassword,
-      newPassword,
-      confirmPassword,
-    } = req.body;
+    const { currentPassword, newPassword, confirmPassword } = req.body;
 
     // Check required fields
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -284,7 +265,7 @@ const changePassword = async (req, res) => {
     // Verify current password
     const isPasswordCorrect = await bcrypt.compare(
       currentPassword,
-      user.password
+      user.password,
     );
 
     if (!isPasswordCorrect) {
@@ -295,10 +276,7 @@ const changePassword = async (req, res) => {
     }
 
     // Prevent using the same password
-    const isSamePassword = await bcrypt.compare(
-      newPassword,
-      user.password
-    );
+    const isSamePassword = await bcrypt.compare(newPassword, user.password);
 
     if (isSamePassword) {
       return res.status(400).json({
@@ -318,7 +296,6 @@ const changePassword = async (req, res) => {
       success: true,
       message: "Password changed successfully.",
     });
-
   } catch (error) {
     console.error("Change password error:", error.message);
 
@@ -333,12 +310,12 @@ const logoutUser = (req, res) => {
   res.clearCookie("token", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
-    sameSite: "lax"
+    sameSite: "lax",
   });
 
   return res.status(200).json({
     success: true,
-    message: "Logged out successfully"
+    message: "Logged out successfully",
   });
 };
 

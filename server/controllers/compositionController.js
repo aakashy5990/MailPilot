@@ -1,4 +1,3 @@
-
 const EmailComposition = require("../models/EmailComposition");
 
 // GET: Fetch the logged-in user's saved composition
@@ -23,9 +22,11 @@ const getComposition = async (req, res) => {
 };
 
 // PUT: Save or update the logged-in user's composition
+
 const saveComposition = async (req, res) => {
   try {
     const {
+      version,
       emailMode,
       accountId,
       recipient,
@@ -47,15 +48,56 @@ const saveComposition = async (req, res) => {
       message,
     };
 
-    const composition = await EmailComposition.findOneAndUpdate(
-      { userId: req.user._id },
-      { $set: compositionData, $setOnInsert: { userId: req.user._id } },
-      {
-        new: true,
-        upsert: true,
-        runValidators: true,
+    // Check whether a draft already exists
+    const existingComposition = await EmailComposition.findOne({
+      userId: req.user._id,
+    });
+
+    // Create the first draft
+    if (!existingComposition) {
+      if (version !== 0) {
+        return res.status(409).json({
+          success: false,
+          message: "Draft conflict. Please reload the latest draft.",
+        });
       }
+
+      const composition = await EmailComposition.create({
+        userId: req.user._id,
+        ...compositionData,
+        version: 1,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Composition saved successfully.",
+        composition,
+      });
+    }
+
+    // Update only if the client's version matches the database
+    const composition = await EmailComposition.findOneAndUpdate(
+      {
+        userId: req.user._id,
+        version,
+      },
+      {
+        $set: compositionData,
+        $inc: { version: 1 },
+      },
+      {
+        returnDocument: "after",
+        runValidators: true,
+      },
     );
+
+    // Version mismatch means another tab saved first
+    if (!composition) {
+      return res.status(409).json({
+        success: false,
+        message: "Draft conflict. Another tab has updated this draft.",
+      });
+    }
 
     return res.status(200).json({
       success: true,
@@ -73,11 +115,50 @@ const saveComposition = async (req, res) => {
 };
 
 // DELETE: Clear the saved composition after successful sending
+
 const clearComposition = async (req, res) => {
   try {
-    await EmailComposition.findOneAndDelete({
+    const version = Number(req.body?.version);
+
+    // Require a valid draft version
+    if (
+      !Number.isSafeInteger(version) ||
+      version < 0 ||
+      req.body?.version === undefined ||
+      req.body?.version === null
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "A valid draft version is required.",
+      });
+    }
+
+    // Delete only when the version matches
+    const deletedComposition = await EmailComposition.findOneAndDelete({
       userId: req.user._id,
+      version,
     });
+
+    if (!deletedComposition) {
+      const currentComposition = await EmailComposition.findOne({
+        userId: req.user._id,
+      });
+
+      // No draft exists, so there is nothing to delete.
+      if (!currentComposition) {
+        return res.status(200).json({
+          success: true,
+          message: "No saved draft exists.",
+        });
+      }
+
+      // A draft exists, but its version is different.
+      return res.status(409).json({
+        success: false,
+        message:
+          "Draft conflict. This draft may have been updated in another tab.",
+      });
+    }
 
     return res.status(200).json({
       success: true,

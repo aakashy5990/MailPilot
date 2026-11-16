@@ -153,7 +153,7 @@ const handleGmailCallback = async (req, res) => {
       },
       {
         upsert: true,
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       },
     );
@@ -264,10 +264,10 @@ const sendEmail = async (req, res) => {
 
     // 4. Prepare multiple attachments
     const attachments = files.map((file) => ({
-  filename: file.originalname,
-  path: file.path,
-  contentType: file.mimetype,
-}));
+      filename: file.originalname,
+      path: file.path,
+      contentType: file.mimetype,
+    }));
 
     // 5. Send email
     const result = await sendGmailMessage({
@@ -437,10 +437,10 @@ const sendBulkEmail = async (req, res) => {
 
     // 7. Prepare attachments once
     const attachments = files.map((file) => ({
-  filename: file.originalname,
-  path: file.path,
-  contentType: file.mimetype,
-}));
+      filename: file.originalname,
+      path: file.path,
+      contentType: file.mimetype,
+    }));
 
     const attachmentHistory = files.map((file) => ({
       filename: file.originalname,

@@ -83,7 +83,7 @@ const updateTemplate = async (req, res) => {
         message,
       },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
       }
     );

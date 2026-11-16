@@ -9,6 +9,7 @@ import {
   FileText,
   X,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import api from "../services/api";
 import Papa from "papaparse";
@@ -52,6 +53,10 @@ function ComposeEmail() {
   const saveTimerRef = useRef(null);
   const saveRequestRef = useRef(Promise.resolve());
   const saveSequenceRef = useRef(0);
+
+  const [draftVersion, setDraftVersion] = useState(0);
+  const broadcastChannelRef = useRef(null);
+  const conflictLockRef = useRef(false);
 
   const [csvStats, setCsvStats] = useState({
     total: 0,
@@ -265,6 +270,7 @@ function ComposeEmail() {
 
           if (saved) {
             setSavedComposition(saved);
+            setDraftVersion(saved.version ?? 0);
             setShowResumePrompt(true);
           }
         } catch (compositionError) {
@@ -285,9 +291,42 @@ function ComposeEmail() {
     fetchAccounts();
   }, []);
 
+  // Initialize cross-tab communication
+  useEffect(() => {
+    const channel = new BroadcastChannel("mailpilot_draft_channel");
+
+    broadcastChannelRef.current = channel;
+
+    channel.onmessage = (event) => {
+      if (event.data?.type === "DRAFT_UPDATED") {
+        if (event.data.version > draftVersion) {
+          conflictLockRef.current = true;
+          setSaveStatus("conflict");
+
+          setError(
+            "This draft was updated in another tab. Please reload the latest draft before saving.",
+          );
+        }
+      } else if (event.data?.type === "DRAFT_CLEARED") {
+        conflictLockRef.current = true;
+        saveSequenceRef.current++;
+
+        setSaveStatus("conflict");
+        setError(
+          "This draft was deleted in another tab. Reload before continuing.",
+        );
+      }
+    };
+
+    return () => {
+      channel.close();
+      broadcastChannelRef.current = null;
+    };
+  }, []);
+
   // Automatically save composition after 2 seconds of inactivity
   useEffect(() => {
-    if (!compositionLoaded) return;
+    if (!compositionLoaded || conflictLockRef.current) return;
 
     const hasContent =
       recipient.trim() ||
@@ -302,6 +341,7 @@ function ComposeEmail() {
       const currentSequence = ++saveSequenceRef.current;
 
       const compositionData = {
+        version: draftVersion,
         emailMode,
         accountId,
         recipient,
@@ -318,7 +358,10 @@ function ComposeEmail() {
         .catch(() => {})
         .then(() => {
           // Skip this request if newer data is already available
-          if (currentSequence !== saveSequenceRef.current) {
+          if (
+            currentSequence !== saveSequenceRef.current ||
+            conflictLockRef.current
+          ) {
             return null;
           }
 
@@ -330,13 +373,31 @@ function ComposeEmail() {
 
         // Only the latest request can update the status
         if (currentSequence === saveSequenceRef.current && result) {
+          const newVersion = result.data.composition.version;
+
+          setDraftVersion(newVersion);
           setSaveStatus("saved");
+
+          // Notify other MailPilot tabs
+          broadcastChannelRef.current?.postMessage({
+            type: "DRAFT_UPDATED",
+            version: newVersion,
+          });
         }
       } catch (error) {
         console.error("Autosave failed:", error.message);
 
         if (currentSequence === saveSequenceRef.current) {
-          setSaveStatus("error");
+          if (error.response?.status === 409) {
+            conflictLockRef.current = true;
+            saveSequenceRef.current++;
+            setSaveStatus("conflict");
+            setError(
+              "This draft was updated in another tab. Reload the latest draft before continuing.",
+            );
+          } else {
+            setSaveStatus("error");
+          }
         }
       }
     }, 2000);
@@ -346,6 +407,7 @@ function ComposeEmail() {
     };
   }, [
     compositionLoaded,
+    draftVersion,
     emailMode,
     accountId,
     recipient,
@@ -487,7 +549,16 @@ function ComposeEmail() {
       await saveRequestRef.current.catch(() => {});
 
       // Delete composition from MongoDB
-      await api.delete("/composition");
+      await api.delete("/composition", {
+        data: {
+          version: draftVersion,
+        },
+      });
+
+      broadcastChannelRef.current?.postMessage({
+        type: "DRAFT_CLEARED",
+        version: draftVersion,
+      });
 
       setSaveStatus("idle");
       console.log("Saved composition cleared.");
@@ -745,7 +816,7 @@ function ComposeEmail() {
           </p>
 
           {step === "form" && (
-            <div className="mt-3 flex items-center gap-2 text-sm">
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
               {saveStatus === "saving" && (
                 <>
                   <Loader2 size={15} className="animate-spin text-blue-600" />
@@ -761,6 +832,45 @@ function ComposeEmail() {
                 <span className="text-red-600">
                   ⚠ Unable to save draft. Please check your connection.
                 </span>
+              )}
+
+              {saveStatus === "conflict" && (
+                <div className="w-full rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle
+                      size={18}
+                      className="shrink-0 text-amber-600"
+                    />
+
+                    <div>
+                      <p className="font-semibold text-amber-800">
+                        Draft updated in another tab
+                      </p>
+
+                      <p className="mt-1 text-xs text-amber-700">
+                        Another tab has saved a newer version. Your current
+                        changes have not been saved. Copy any changes you want
+                        to keep before reloading.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (
+                            window.confirm(
+                              "Reload the latest draft? Any unsaved changes in this tab will be lost.",
+                            )
+                          ) {
+                            window.location.reload();
+                          }
+                        }}
+                        className="mt-3 rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                      >
+                        Reload latest draft
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -994,7 +1104,8 @@ function ComposeEmail() {
               <label className="mb-2 block text-sm font-medium text-slate-700">
                 Attachments
                 <span className="ml-1 text-xs font-normal text-slate-500">
-                  (PDF, Images, Documents, Excel & PowerPoint · Max 5 files · 5 MB each · 15 MB total)
+                  (PDF, Images, Documents, Excel & PowerPoint · Max 5 files · 5
+                  MB each · 15 MB total)
                 </span>
               </label>
 
