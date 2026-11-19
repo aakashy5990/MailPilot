@@ -55,6 +55,7 @@ function ComposeEmail() {
   const saveSequenceRef = useRef(0);
 
   const [draftVersion, setDraftVersion] = useState(0);
+  const draftVersionRef = useRef(0);
   const broadcastChannelRef = useRef(null);
   const conflictLockRef = useRef(false);
 
@@ -270,7 +271,10 @@ function ComposeEmail() {
 
           if (saved) {
             setSavedComposition(saved);
-            setDraftVersion(saved.version ?? 0);
+            const initialVersion = saved.version ?? 0;
+
+            draftVersionRef.current = initialVersion;
+            setDraftVersion(initialVersion);
             setShowResumePrompt(true);
           }
         } catch (compositionError) {
@@ -341,7 +345,7 @@ function ComposeEmail() {
       const currentSequence = ++saveSequenceRef.current;
 
       const compositionData = {
-        version: draftVersion,
+        version: draftVersionRef.current,
         emailMode,
         accountId,
         recipient,
@@ -365,7 +369,8 @@ function ComposeEmail() {
             return null;
           }
 
-          return api.put("/composition", compositionData);
+          // return api.put("/composition", compositionData);
+          return saveWithRetry(compositionData);
         });
 
       try {
@@ -375,6 +380,7 @@ function ComposeEmail() {
         if (currentSequence === saveSequenceRef.current && result) {
           const newVersion = result.data.composition.version;
 
+          draftVersionRef.current = newVersion;
           setDraftVersion(newVersion);
           setSaveStatus("saved");
 
@@ -407,7 +413,6 @@ function ComposeEmail() {
     };
   }, [
     compositionLoaded,
-    draftVersion,
     emailMode,
     accountId,
     recipient,
@@ -572,6 +577,37 @@ function ComposeEmail() {
     }
   };
 
+  // helper function
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const saveWithRetry = async (compositionData) => {
+    const delays = [1000, 2000];
+
+    for (let attempt = 0; attempt <= delays.length; attempt++) {
+      try {
+        return await api.put("/composition", compositionData);
+      } catch (error) {
+        // Never retry a multi-tab version conflict
+        if (error.response?.status === 409) {
+          throw error;
+        }
+
+        const status = error.response?.status;
+
+        // Retry network errors and server errors (5xx) only
+        const shouldRetry = !status || status >= 500;
+
+        if (!shouldRetry || attempt === delays.length) {
+          throw error;
+        }
+
+        setSaveStatus("retrying");
+        await wait(delays[attempt]);
+      }
+    }
+  };
+
   // Resume the previous composition
   const handleResumeComposition = () => {
     if (!savedComposition) return;
@@ -600,7 +636,6 @@ function ComposeEmail() {
   };
 
   // Discard the previous composition
-
   const handleDiscardComposition = async () => {
     // Try deleting the saved composition
     const isDeleted = await clearSavedComposition();
@@ -610,6 +645,10 @@ function ComposeEmail() {
       setError("Unable to discard your previous email. Please try again.");
       return;
     }
+
+    setDraftVersion(0);
+    draftVersionRef.current = 0;
+    conflictLockRef.current = false;
 
     // Deletion successful: clear local form data
     setSavedComposition(null);
@@ -826,6 +865,15 @@ function ComposeEmail() {
 
               {saveStatus === "saved" && (
                 <span className="text-green-600">✓ All changes saved</span>
+              )}
+
+              {saveStatus === "retrying" && (
+                <>
+                  <Loader2 size={15} className="animate-spin text-amber-600" />
+                  <span className="text-amber-600">
+                    Retrying to save draft...
+                  </span>
+                </>
               )}
 
               {saveStatus === "error" && (
